@@ -1,0 +1,148 @@
+/* 鸠占鹊巢·记忆核心 —— 面板美化（适配 SillyTavern 暗色主题） */
+#ntr-memory-settings.ntrmem-panel {
+    padding: 14px 16px;
+    background: #191920;
+    border: 1px solid #2c2c38;
+    border-radius: 10px;
+    font-size: 13px;
+    color: #d5d5e0;
+    line-height: 1.5;
+}
+
+#ntr-memory-settings h3 {
+    margin: 0 0 10px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #f0f0fa;
+    border-bottom: 1px solid #2c2c38;
+    padding-bottom: 8px;
+}
+
+#ntr-memory-settings hr {
+    border: none;
+    border-top: 1px solid #2c2c38;
+    margin: 10px 0;
+}
+
+.ntrmem-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.ntrmem-label {
+    margin: 10px 0 4px;
+    font-weight: 600;
+    color: #a8a8c0;
+    font-size: 12px;
+}
+
+#ntr-memory-settings textarea,
+#ntr-memory-settings input[type="number"],
+#ntr-memory-settings input[type="text"] {
+    background: #101016;
+    color: #d5d5e0;
+    border: 1px solid #33333f;
+    border-radius: 5px;
+    padding: 5px 7px;
+    font-size: 12px;
+}
+
+#ntr-memory-settings input[type="number"] {
+    width: 70px;
+}
+
+#ntr-memory-settings button {
+    background: #2a2a38;
+    color: #d5d5e0;
+    border: 1px solid #3a3a4a;
+    border-radius: 5px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s;
+}
+
+#ntr-memory-settings button:hover {
+    background: #36364a;
+}
+
+#ntr-memory-settings button.ntrmem-danger {
+    color: #ff7b7b;
+    border-color: #6b3030;
+    background: #2a1c1c;
+}
+
+#ntr-memory-settings button.ntrmem-danger:hover {
+    background: #3a2424;
+}
+
+.ntrmem-char-block {
+    border: 1px solid #2c2c38;
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin-bottom: 6px;
+    background: #14141a;
+}
+
+.ntrmem-char-title {
+    cursor: pointer;
+    font-weight: 600;
+    user-select: none;
+    color: #d5d5e0;
+}
+
+.ntrmem-char-title:hover {
+    color: #ffffff;
+}
+
+.ntrmem-arrow {
+    display: inline-block;
+    width: 14px;
+    color: #8a8aa0;
+}
+
+.ntrmem-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.ntrmem-table th,
+.ntrmem-table td {
+    border: 1px solid #2c2c38;
+    padding: 3px 4px;
+    text-align: center;
+}
+
+.ntrmem-table th {
+    background: #1f1f28;
+    color: #b0b0c0;
+    font-weight: 600;
+}
+
+.ntrmem-table input {
+    width: 48px;
+}
+
+.ntrmem-item {
+    font-size: 12px;
+    color: #9a9ab0;
+    margin-bottom: 3px;
+}
+
+.ntrmem-item button {
+    padding: 1px 7px;
+    font-size: 11px;
+}
+
+/* 手动总结区 */
+.ntrmem-manual-box {
+    border: 1px dashed #3a3a4a;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    background: #15151c;
+}
