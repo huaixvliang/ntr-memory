@@ -10,7 +10,7 @@
 2. 粘贴本仓库地址：
 
    ```
-   https://github.com/你的用户名/ntr-memory
+(https://github.com/huaixvliang/ntr-memory)
    ```
 
 3. 点 **Install**，等它下载完成；
