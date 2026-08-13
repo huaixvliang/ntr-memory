@@ -15,9 +15,11 @@
  * 所有总结/压缩都调用「主 API」（generateRaw）。
  * ------------------------------------------------------------------
  */
-import * as ST from '../../../script.js';
-import * as EXT from '../../extensions.js';
-import * as SC from '../../slash-commands.js';
+// 绝对路径 import：无论手动安装（extensions/ntr-memory）还是 Install Extension
+// （extensions/third-party/ntr-memory）都能正确加载——相对路径会因多一层 third-party 而错位。
+import * as ST from '/script.js';
+import * as EXT from '/scripts/extensions.js';
+import * as SC from '/scripts/slash-commands.js';
 
 // 运行时解构 + 回退：兼容不同酒馆版本，缺某个 API 不至于整个扩展加载失败
 const eventSource = ST.eventSource;
