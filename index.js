@@ -282,6 +282,22 @@ async function scheduleSummarize() {
     }
 }
 
+/** 手动总结最近 n 条消息（测试用 / 手动触发），返回实际总结的条数 */
+async function manualSummarize(n) {
+    const context = getContext();
+    const chat = context.chat || [];
+    const msgs = [];
+    for (let i = chat.length - 1; i >= 0 && msgs.length < n; i--) {
+        const msg = chat[i];
+        if (!msg || !msg.mes) continue;
+        if (msg.extra?.type === 'narrator' || msg.extra?.type === 'memory') continue;
+        msgs.unshift({ role: msg.is_user ? '玩家' : '角色', text: String(msg.mes) });
+    }
+    if (!msgs.length) return 0;
+    await summarizeBatch(msgs);
+    return msgs.length;
+}
+
 async function summarizeBatch(batch) {
     const mem = getMem();
     const historyText = batch.map((m, i) => `${i + 1}. [${m.role}] ${m.text}`).join('\n');
@@ -606,17 +622,15 @@ function registerCommands() {
 
     registerSlashCommand(
         'mem-sum',
-        () => {
-            const mem = getMem();
-            if (mem.pending.length === 0) {
-                return '[记忆核心] 没有待总结的消息。';
-            }
-            const batch = mem.pending.splice(0, mem.pending.length);
-            summarizeBatch(batch);
-            return '[记忆核心] 已触发总结，稍后用 /mem 查看结果。';
+        (args) => {
+            const text = typeof args === 'string' ? args : (args?.value ?? String(args ?? ''));
+            const n = parseInt(text.trim()) || 3;
+            const count = Math.min(Math.max(n, 1), 20);
+            manualSummarize(count);
+            return `[记忆核心] 正在手动总结最近 ${count} 条消息，稍后用 /mem 查看结果。`;
         },
         [],
-        '立即总结当前待处理消息',
+        '手动总结最近 N 条消息：/mem-sum [N]（默认 3，范围 1-20）',
     );
 
     registerSlashCommand(
@@ -654,20 +668,29 @@ function buildSettingsHtml() {
     return `
     <div id="ntr-memory-settings" class="ntrmem-panel">
         <h3>鸠占鹊巢·记忆核心</h3>
-        <label style="display:block;margin-bottom:6px;"><input type="checkbox" id="ntrmem-enabled"> 启用记忆注入</label>
+        <div class="ntrmem-row"><label><input type="checkbox" id="ntrmem-enabled"> 启用记忆注入</label></div>
+
+        <div class="ntrmem-manual-box">
+            <div class="ntrmem-label">手动总结（测试用，立即出结果）：</div>
+            <div class="ntrmem-row">
+                总结最近 <input type="number" id="ntrmem-manual-n" min="1" max="20" value="3"> 条消息
+                <button id="ntrmem-manual-sum">立即总结</button>
+            </div>
+        </div>
+
         <hr>
-        <div class="ntrmem-row">总结楼层（每几条消息总结一次）：<input type="number" id="ntrmem-queue" min="2" max="50" style="width:70px"></div>
-        <div class="ntrmem-row">每人事件窗保留条数：<input type="number" id="ntrmem-events" min="5" max="100" style="width:70px"></div>
-        <div class="ntrmem-row">全局大事件保留条数：<input type="number" id="ntrmem-globalmax" min="5" max="100" style="width:70px"></div>
+        <div class="ntrmem-row">总结楼层（每几条消息自动总结一次）：<input type="number" id="ntrmem-queue" min="2" max="50"></div>
+        <div class="ntrmem-row">每人事件窗保留条数：<input type="number" id="ntrmem-events" min="5" max="100"></div>
+        <div class="ntrmem-row">全局大事件保留条数：<input type="number" id="ntrmem-globalmax" min="5" max="100"></div>
         <hr>
         <div class="ntrmem-label">常驻世界观（每次生成前优先注入，历史被截断也不丢基础设定）：</div>
         <textarea id="ntrmem-worldview" rows="4" style="width:100%" placeholder="粘贴世界观/基础设定，例如：临海市 · 重组家庭+校园 · 主角背债复仇 · 金手指「暗房」App · 全员成年、无血亲"></textarea>
         <hr>
         <div class="ntrmem-label">数值快照（可直接改，改完自动生效）：</div>
         <div id="ntrmem-snapshot"></div>
-        <button id="ntrmem-addperson" style="margin-top:4px">＋ 新增人物</button>
+        <div class="ntrmem-row" style="margin-top:4px"><button id="ntrmem-addperson">＋ 新增人物</button></div>
         <hr>
-        <div class="ntrmem-label">剧情记忆（按人分，可删单条事件）：</div>
+        <div class="ntrmem-label">剧情记忆（按人分，点名字展开，可删单条事件）：</div>
         <div id="ntrmem-characters"></div>
         <hr>
         <div class="ntrmem-label">全局大事件轴（可删单条）：</div>
@@ -680,8 +703,8 @@ function buildSettingsHtml() {
         <div class="ntrmem-row">
             <button id="ntrmem-export">导出记忆</button>
             <button id="ntrmem-import">导入记忆</button>
+            <button id="ntrmem-clear" class="ntrmem-danger">清空全部记忆</button>
         </div>
-        <button id="ntrmem-clear" style="color:#d33">清空全部记忆</button>
     </div>`;
 }
 
@@ -841,6 +864,18 @@ function bindSettingsEvents() {
     bindNum('ntrmem-queue', 'queueSize');
     bindNum('ntrmem-events', 'eventsPerChar');
     bindNum('ntrmem-globalmax', 'globalMax');
+
+    document.getElementById('ntrmem-manual-sum').addEventListener('click', () => {
+        const n = Math.min(Math.max(Number(document.getElementById('ntrmem-manual-n').value) || 3, 1), 20);
+        manualSummarize(n).then(done => {
+            if (done > 0) {
+                toastr?.success?.(`已总结最近 ${done} 条消息`);
+                renderSettings();
+            } else {
+                toastr?.warning?.('没有可总结的消息');
+            }
+        });
+    });
 
     document.getElementById('ntrmem-worldview').addEventListener('change', e => {
         getMem().worldview = e.target.value;
