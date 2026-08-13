@@ -1,0 +1,12 @@
+{
+    "display_name": "鸠占鹊巢·记忆核心（NTR MemoryCore）",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "",
+    "author": "鸠占鹊巢_强背德NTL",
+    "version": "1.0.0",
+    "homePage": "",
+    "generate_interceptor": "ntrMemoryInterceptor"
+}
