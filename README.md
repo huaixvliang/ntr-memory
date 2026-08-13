@@ -69,7 +69,7 @@ SillyTavern/public/scripts/extensions/ntr-memory/
 | `/mem` | 查看记忆状态 + 数值快照 |
 | `/mem-set 人物 字段 值` | 改数值，如 `/mem-set 沈清璃 好感 80`（字段：好感/沉沦/背德/暴露/服从/发现） |
 | `/mem-rm 人物` | 删除某人快照 |
-| `/mem-sum` | 立即总结待处理消息 |
+| `/mem-sum [N]` | 手动总结最近 N 条消息（默认 3，范围 1-20），测试用；面板也有「立即总结」按钮 |
 | `/mem-clear` | 清空全部记忆 |
 | `/mem-export` | 导出全部记忆为 JSON（复制后可用面板「导入记忆」恢复） |
 
