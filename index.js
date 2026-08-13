@@ -15,9 +15,19 @@
  * 所有总结/压缩都调用「主 API」（generateRaw）。
  * ------------------------------------------------------------------
  */
-import { eventSource, event_types, generateRaw, saveSettingsDebounced } from '../../../script.js';
-import { extension_settings, getContext } from '../../extensions.js';
-import { registerSlashCommand } from '../../slash-commands.js';
+import * as ST from '../../../script.js';
+import * as EXT from '../../extensions.js';
+import * as SC from '../../slash-commands.js';
+
+// 运行时解构 + 回退：兼容不同酒馆版本，缺某个 API 不至于整个扩展加载失败
+const eventSource = ST.eventSource;
+const event_types = ST.event_types;
+const saveSettingsDebounced = ST.saveSettingsDebounced;
+const generateRaw = ST.generateRaw;
+const generateQuietPrompt = ST.generateQuietPrompt;
+const extension_settings = EXT.extension_settings;
+const getContext = EXT.getContext;
+const registerSlashCommand = SC.registerSlashCommand;
 
 const MODULE = 'ntr-memory';
 
@@ -202,11 +212,17 @@ function buildExtractPrompt(historyText, snapshotText) {
 
 async function callMainApi(prompt, systemPrompt, responseLength) {
     try {
-        const result = await generateRaw({
-            prompt,
-            systemPrompt: systemPrompt || '你是剧情记忆归档器，只输出要求的文本，不要任何额外解释。',
-            responseLength,
-        });
+        const sys = systemPrompt || '你是剧情记忆归档器，只输出要求的文本，不要任何额外解释。';
+        let result;
+        if (typeof generateRaw === 'function') {
+            result = await generateRaw({ prompt, systemPrompt: sys, responseLength });
+        } else if (typeof generateQuietPrompt === 'function') {
+            // 老版本回退：generateQuietPrompt 带聊天上下文，但可用
+            result = await generateQuietPrompt({ quietPrompt: prompt, skipWIAN: true, responseLength });
+        } else {
+            console.warn('[ntr-memory] 当前酒馆版本不支持 generateRaw / generateQuietPrompt，总结功能停用');
+            return '';
+        }
         return (typeof result === 'string' ? result : '').trim();
     } catch (e) {
         console.error('[ntr-memory] 主 API 调用失败：', e);
@@ -515,6 +531,10 @@ globalThis.ntrMemoryInterceptor = ntrMemoryInterceptor;
 // ---------- 斜杠命令 ----------
 
 function registerCommands() {
+    if (typeof registerSlashCommand !== 'function') {
+        console.warn('[ntr-memory] 当前版本无 registerSlashCommand，斜杠命令不可用（不影响记忆功能）');
+        return;
+    }
     registerSlashCommand(
         'mem',
         () => {
@@ -955,13 +975,15 @@ function init() {
     if (initialized) return;
     initialized = true;
     getMem();
-    eventSource.on(event_types.MESSAGE_SENT, (messageId) => {
-        pushMessage(messageId);
-    });
-    eventSource.on(event_types.MESSAGE_RECEIVED, (messageId) => {
-        const isAI = pushMessage(messageId);
-        if (isAI) checkSummarize();
-    });
+    if (typeof eventSource?.on === 'function' && event_types) {
+        eventSource.on(event_types.MESSAGE_SENT, (messageId) => {
+            pushMessage(messageId);
+        });
+        eventSource.on(event_types.MESSAGE_RECEIVED, (messageId) => {
+            const isAI = pushMessage(messageId);
+            if (isAI) checkSummarize();
+        });
+    }
     try { registerCommands(); } catch (e) { console.warn('[ntr-memory] 命令注册失败：', e); }
     try { mountSettings(); } catch (e) { console.warn('[ntr-memory] 设置面板挂载失败：', e); }
     console.log('[ntr-memory] 记忆核心已启动（按人分档 + 共有记忆）。');
