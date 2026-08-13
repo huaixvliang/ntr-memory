@@ -19,6 +19,16 @@
 
 > 手机端无需碰文件系统：手机浏览器打开酒馆 → 同样点 Extensions → Install Extension → 粘贴地址 → 安装 → 刷新。前提是部署酒馆的宿主（云服务器 / Termux）已安装 git。
 
+### 更新 / 重装（重要）
+
+Install Extension 用 `git clone`，**同一个目录第二次安装会报「Directory already exists」冲突**，不会自动更新。要更新到新版本：
+
+1. 先删掉旧扩展：Extensions 列表里找到「鸠占鹊巢·记忆核心」→ 删除（Delete）；
+   - 若删除后仍提示目录占用，手动删掉 `SillyTavern/public/scripts/extensions/third-party/ntr-memory/` 文件夹（或 `extensions/ntr-memory/`）；
+2. 再重新 **Install Extension** 粘贴地址 → Install → 刷新。
+
+或者手动更新更快：用最新 `index.js` + `manifest.json` 直接覆盖旧文件，再刷新。
+
 ## 手动安装（备选）
 
 把本仓库的 `manifest.json` 和 `index.js` 两个文件放进：
