@@ -56,6 +56,7 @@ const DEFAULTS = {
     characters: {},      // 剧情记忆 {人物名: {events: [], summary: ''}}
     globalEvents: [],    // 全局大事件轴 [{time, location, characters, event, tags}]
     globalSummary: '',   // 全局总纲
+    mainlineSummary: '', // 主线大记忆：宏观主线总结（复仇/各线关系/苦主态势/暴雷风险）
 };
 
 // ---------- 存储 ----------
@@ -191,7 +192,8 @@ function buildExtractPrompt(historyText, snapshotText) {
         '  },',
         '  "time": "时间（如：第二天晚上 / 无明确时间则写 null）",',
         '  "location": "地点（如：别墅厨房 / 大学教室）",',
-        '  "event": "一句话概括本段关键事件（谁对谁做了什么、谁发现了什么，要具体）"',
+        '  "event": "一句话概括本段关键事件（谁对谁做了什么、谁发现了什么，要具体）",',
+        '  "mainline": "本段对话对主线的宏观推进（复仇大计/各线攻略进度/苦主总体态势/暴雷风险，一句话；若本段只是日常、无主线推进则填 null）"',
         '}',
         '',
         '规则：只提取对话中明确出现的信息，没出现的一律填 null 或省略；before 必须写清「发生前玩家在做什么」，保证记忆能联动前因后果；mainCharacters 必须从出场人物里选；event 必须具体。',
@@ -328,7 +330,29 @@ async function summarizeBatch(batch) {
         await rollGlobalSummary(overflow);
     }
 
+    // 5) 主线大记忆：本段对主线的宏观推进 → 滚动压缩成连贯主线
+    if (typeof event.mainline === 'string' && event.mainline.trim()) {
+        await rollMainline(event.mainline.trim());
+    }
+
     persist();
+}
+
+/** 把主线推进片段追加进主线大记忆（超长再压缩成连贯主线） */
+async function rollMainline(piece) {
+    const mem = getMem();
+    mem.mainlineSummary = mem.mainlineSummary ? `${mem.mainlineSummary}\n${piece}` : piece;
+    if (mem.mainlineSummary.length > mem.summaryMaxLen) {
+        const old = mem.mainlineSummary;
+        try {
+            const merged = await callMainApi(
+                `请把下面的主线总结压缩成一段连贯的宏观主线（400 字以内，保留复仇进度、各线关系进展、苦主总体态势、暴雷风险）：\n${old}`,
+                '你是剧情主线压缩器，只输出主线正文，不要解释。',
+                450,
+            );
+            if (merged) mem.mainlineSummary = merged;
+        } catch (e) { /* 保留原样 */ }
+    }
 }
 
 /** 把某角色滚出的事件压成一段摘要，追加到该角色 summary（超长再压缩） */
@@ -414,6 +438,11 @@ function buildInjection(mem) {
     // 常驻世界观永远最先注入
     if (mem.worldview && mem.worldview.trim()) {
         parts.push(`【世界观·常驻】\n${mem.worldview.trim()}`);
+    }
+
+    // 主线大记忆（宏观主线，始终注入）
+    if (mem.mainlineSummary) {
+        parts.push(`【主线大记忆】\n${mem.mainlineSummary}`);
     }
 
     // 数值快照（全量，按人，体积固定）
@@ -577,6 +606,7 @@ function registerCommands() {
             mem.characters = {};
             mem.globalEvents = [];
             mem.globalSummary = '';
+            mem.mainlineSummary = '';
             processedIds.clear();
             persist();
             return '[记忆核心] 已清空全部记忆。';
@@ -620,6 +650,8 @@ function buildSettingsHtml() {
         <hr>
         <div class="ntrmem-label">全局大事件轴（可删单条）：</div>
         <div id="ntrmem-globalevents"></div>
+        <div class="ntrmem-label">主线大记忆（宏观主线，可编辑）：</div>
+        <textarea id="ntrmem-mainline" rows="4" style="width:100%"></textarea>
         <div class="ntrmem-label">全局总纲：</div>
         <textarea id="ntrmem-globalsummary" rows="3" style="width:100%"></textarea>
         <hr>
@@ -765,6 +797,7 @@ function renderSettings() {
     document.getElementById('ntrmem-events').value = mem.eventsPerChar;
     document.getElementById('ntrmem-globalmax').value = mem.globalMax;
     document.getElementById('ntrmem-worldview').value = mem.worldview;
+    document.getElementById('ntrmem-mainline').value = mem.mainlineSummary;
     document.getElementById('ntrmem-globalsummary').value = mem.globalSummary;
     renderSnapshot(mem);
     renderCharacters(mem);
@@ -791,6 +824,10 @@ function bindSettingsEvents() {
         getMem().worldview = e.target.value;
         persist();
     });
+    document.getElementById('ntrmem-mainline').addEventListener('change', e => {
+        getMem().mainlineSummary = e.target.value;
+        persist();
+    });
     document.getElementById('ntrmem-globalsummary').addEventListener('change', e => {
         getMem().globalSummary = e.target.value;
         persist();
@@ -813,6 +850,7 @@ function bindSettingsEvents() {
         mem.characters = {};
         mem.globalEvents = [];
         mem.globalSummary = '';
+        mem.mainlineSummary = '';
         processedIds.clear();
         persist();
         renderSettings();
@@ -835,6 +873,7 @@ function exportMemory() {
         characters: mem.characters,
         globalEvents: mem.globalEvents,
         globalSummary: mem.globalSummary,
+        mainlineSummary: mem.mainlineSummary,
         worldview: mem.worldview,
     };
     return JSON.stringify(data, null, 2);
@@ -849,6 +888,7 @@ function importMemory(jsonText) {
     if (data.characters && typeof data.characters === 'object') mem.characters = data.characters;
     if (Array.isArray(data.globalEvents)) mem.globalEvents = data.globalEvents;
     if (typeof data.globalSummary === 'string') mem.globalSummary = data.globalSummary;
+    if (typeof data.mainlineSummary === 'string') mem.mainlineSummary = data.mainlineSummary;
     if (typeof data.worldview === 'string') mem.worldview = data.worldview;
     persist();
     return true;
