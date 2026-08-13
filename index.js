@@ -20,6 +20,7 @@
 import * as ST from '/script.js';
 import * as EXT from '/scripts/extensions.js';
 import * as SC from '/scripts/slash-commands.js';
+import * as WI from '/scripts/world-info.js';
 
 // 运行时解构 + 回退：兼容不同酒馆版本，缺某个 API 不至于整个扩展加载失败
 const eventSource = ST.eventSource;
@@ -30,6 +31,8 @@ const generateQuietPrompt = ST.generateQuietPrompt;
 const extension_settings = EXT.extension_settings;
 const getContext = EXT.getContext;
 const registerSlashCommand = SC.registerSlashCommand;
+const world_names = WI.world_names;
+const loadWorldInfo = WI.loadWorldInfo;
 
 const MODULE = 'ntr-memory';
 
@@ -62,7 +65,8 @@ const DEFAULTS = {
     eventsPerChar: 15,   // 每个角色保留最近几条事件（滚动窗口）
     summaryMaxLen: 500,  // 每个角色的摘要超过这个字数就重新压缩
     globalMax: 20,       // 全局大事件轴保留条数
-    worldview: '',       // 常驻世界观：每次生成前优先注入
+    worldview: '',       // 常驻世界观：手动粘贴的补充设定（每次生成前优先注入）
+    autoWorldInfo: true, // 自动拉取已启用世界书的「常驻条目」作为世界观注入
     pending: [],         // 待总结的消息队列 [{role, text}]
     snapshot: {},        // 数值快照 {人物名: {好感, 沉沦, 背德, 暴露, 服从, 发现}}
     characters: {},      // 剧情记忆 {人物名: {events: [], summary: ''}}
@@ -491,14 +495,45 @@ function detectActiveCharacters() {
     return [...found];
 }
 
+// ---------- 世界书常驻条目拉取 ----------
+
+let cachedWorldView = '';
+let cachedWorldViewTime = 0;
+
+/** 拉取当前已启用世界书的「常驻条目」内容（带 30 秒缓存，避免每次生成都读盘） */
+async function getConstantWorldInfo() {
+    const now = Date.now();
+    if (now - cachedWorldViewTime < 30000) return cachedWorldView;
+    try {
+        const names = Array.isArray(world_names) ? world_names : [];
+        const parts = [];
+        for (const name of names) {
+            const book = await loadWorldInfo(name);
+            const entries = Object.values(book?.entries || {});
+            for (const e of entries) {
+                if (e && e.constant && !e.disable && e.content && e.content.trim()) {
+                    parts.push(e.content.trim());
+                }
+            }
+        }
+        cachedWorldView = parts.join('\n');
+        cachedWorldViewTime = now;
+        return cachedWorldView;
+    } catch (e) {
+        console.warn('[ntr-memory] 拉取世界书常驻条目失败：', e);
+        return cachedWorldView;
+    }
+}
+
 // ---------- 生成前注入 ----------
 
-function buildInjection(mem) {
+function buildInjection(mem, autoWorldView = '') {
     const parts = [];
 
-    // 常驻世界观永远最先注入
-    if (mem.worldview && mem.worldview.trim()) {
-        parts.push(`【世界观·常驻】\n${mem.worldview.trim()}`);
+    // 常驻世界观永远最先注入（手动粘贴的 + 自动拉取的世界书常驻条目）
+    const wv = [mem.worldview?.trim(), autoWorldView].filter(Boolean).join('\n');
+    if (wv) {
+        parts.push(`【世界观·常驻】\n${wv}`);
     }
 
     // 主线大记忆（宏观主线，始终注入）
@@ -560,7 +595,14 @@ async function ntrMemoryInterceptor(chat, contextSize, abort, type) {
     const mem = getMem();
     if (!mem.enabled) return;
     if (type === 'quiet' || type === 'summarize') return;
-    const injection = buildInjection(mem);
+
+    // 自动拉取已启用世界书的常驻条目（作为世界观注入）
+    let autoWV = '';
+    if (mem.autoWorldInfo && typeof loadWorldInfo === 'function') {
+        autoWV = await getConstantWorldInfo();
+    }
+
+    const injection = buildInjection(mem, autoWV);
     if (!injection) return;
     chat.push({
         name: '系统记忆',
@@ -710,8 +752,9 @@ function buildSettingsHtml() {
         <div class="ntrmem-row">每人事件窗保留条数：<input type="number" id="ntrmem-events" min="5" max="100"></div>
         <div class="ntrmem-row">全局大事件保留条数：<input type="number" id="ntrmem-globalmax" min="5" max="100"></div>
         <hr>
-        <div class="ntrmem-label">常驻世界观（每次生成前优先注入，历史被截断也不丢基础设定）：</div>
-        <textarea id="ntrmem-worldview" rows="4" style="width:100%" placeholder="粘贴世界观/基础设定，例如：临海市 · 重组家庭+校园 · 主角背债复仇 · 金手指「暗房」App · 全员成年、无血亲"></textarea>
+        <div class="ntrmem-row"><label><input type="checkbox" id="ntrmem-autowi"> 自动拉取已启用世界书的「常驻条目」作为世界观注入</label></div>
+        <div class="ntrmem-label">常驻世界观·手动补充（每次生成前优先注入，历史被截断也不丢基础设定）：</div>
+        <textarea id="ntrmem-worldview" rows="4" style="width:100%" placeholder="可留空（已开启自动拉取世界书常驻条目）；也可补充世界书里没有的设定"></textarea>
         <hr>
         <div class="ntrmem-label">数值快照（可直接改，改完自动生效）：</div>
         <div id="ntrmem-snapshot"></div>
@@ -865,6 +908,7 @@ function renderSettings() {
     const $enabled = document.getElementById('ntrmem-enabled');
     if (!$enabled) return;
     $enabled.checked = mem.enabled;
+    document.getElementById('ntrmem-autowi').checked = mem.autoWorldInfo !== false;
     document.getElementById('ntrmem-queue').value = mem.queueSize;
     document.getElementById('ntrmem-events').value = mem.eventsPerChar;
     document.getElementById('ntrmem-globalmax').value = mem.globalMax;
@@ -879,6 +923,10 @@ function renderSettings() {
 function bindSettingsEvents() {
     document.getElementById('ntrmem-enabled').addEventListener('change', e => {
         getMem().enabled = e.target.checked;
+        persist();
+    });
+    document.getElementById('ntrmem-autowi').addEventListener('change', e => {
+        getMem().autoWorldInfo = e.target.checked;
         persist();
     });
     const bindNum = (id, key) => {
