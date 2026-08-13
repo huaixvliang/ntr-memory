@@ -95,24 +95,35 @@ function persist() {
 
 // ---------- 工具 ----------
 
-/** 从模型输出中稳健地提取 JSON 对象 */
+/** 从模型输出中稳健地提取 JSON 对象（字符串感知 + BOM 清理 + 多层兜底） */
 function extractJson(text) {
     if (!text) return null;
-    try { return JSON.parse(text); } catch { /* 继续 */ }
-    const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    let t = String(text).replace(/^\uFEFF/, '').trim();
+
+    // 1) 直接解析
+    try { return JSON.parse(t); } catch { /* 继续 */ }
+
+    // 2) 去掉 markdown 代码块围栏 ```json ... ```
+    const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
     if (fence) {
-        try { return JSON.parse(fence[1].trim()); } catch { /* 继续 */ }
+        try { return JSON.parse(fence[1].replace(/^\uFEFF/, '').trim()); } catch { /* 继续 */ }
     }
-    const start = text.indexOf('{');
+
+    // 3) 提取第一个 {...} 块（字符串感知：跳过字符串内的花括号与转义）
+    const start = t.indexOf('{');
     if (start === -1) return null;
-    let depth = 0;
-    for (let i = start; i < text.length; i++) {
-        const ch = text[i];
-        if (ch === '{') depth++;
-        else if (ch === '}') {
+    let depth = 0, inStr = false, esc = false;
+    for (let i = start; i < t.length; i++) {
+        const c = t[i];
+        if (esc) { esc = false; continue; }
+        if (c === '\\') { esc = true; continue; }
+        if (c === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (c === '{') depth++;
+        else if (c === '}') {
             depth--;
             if (depth === 0) {
-                try { return JSON.parse(text.slice(start, i + 1)); } catch { return null; }
+                try { return JSON.parse(t.slice(start, i + 1)); } catch { return null; }
             }
         }
     }
@@ -208,16 +219,18 @@ function buildExtractPrompt(historyText, snapshotText) {
         '  "mainline": "本段对话对主线的宏观推进（复仇大计/各线攻略进度/苦主总体态势/暴雷风险，一句话；若本段只是日常、无主线推进则填 null）"',
         '}',
         '',
-        '规则：只提取对话中明确出现的信息，没出现的一律填 null 或省略；before 必须写清「发生前玩家在做什么」，保证记忆能联动前因后果；mainCharacters 必须从出场人物里选；event 必须具体。',
+        '规则：只提取对话中明确出现的信息，没出现的一律填 null 或省略；before 必须写清「发生前玩家在做什么」；mainCharacters 必须从出场人物里选；event 必须具体。输出必须是单行合法 JSON（字符串值内不要换行、不要 markdown 代码块、不要任何解释）。',
     ].join('\n');
 }
 
 async function callMainApi(prompt, systemPrompt, responseLength) {
     const sys = systemPrompt || '你是剧情记忆归档器，只输出要求的文本，不要任何额外解释。';
-    // 优先 generateRaw（不带聊天上下文，干净）；失败或返回空则回退 generateQuietPrompt（带上下文，更稳）
+    // 注意：不传 responseLength（max_tokens）——若模型带 reasoning（如 deepseek-reasoner），
+    // 限制 max_tokens 过小会让 reasoning 占满、content 为空，导致「No message generated」。
+    // 优先 generateRaw（不带聊天上下文，干净）；失败或空则回退 generateQuietPrompt（带上下文）。
     if (typeof generateRaw === 'function') {
         try {
-            const r = await generateRaw({ prompt, systemPrompt: sys, responseLength });
+            const r = await generateRaw({ prompt, systemPrompt: sys });
             const txt = (typeof r === 'string' ? r : '').trim();
             if (txt) {
                 console.debug('[ntr-memory] generateRaw 总结成功，长度', txt.length);
@@ -230,7 +243,7 @@ async function callMainApi(prompt, systemPrompt, responseLength) {
     }
     if (typeof generateQuietPrompt === 'function') {
         try {
-            const r = await generateQuietPrompt({ quietPrompt: prompt, skipWIAN: true, responseLength });
+            const r = await generateQuietPrompt({ quietPrompt: prompt, skipWIAN: true });
             const txt = (typeof r === 'string' ? r : '').trim();
             if (txt) {
                 console.debug('[ntr-memory] generateQuietPrompt 总结成功，长度', txt.length);
@@ -326,7 +339,7 @@ async function summarizeBatch(batch) {
 
     const event = extractJson(result);
     if (!event) {
-        console.warn('[ntr-memory] 无法解析总结 JSON，跳过本次：', result.slice(0, 200));
+        console.warn('[ntr-memory] 无法解析总结 JSON，跳过本次，原始输出：\n', result);
         return;
     }
 
