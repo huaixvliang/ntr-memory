@@ -7,6 +7,6 @@
     "css": "",
     "author": "鸠占鹊巢_强背德NTL",
     "version": "1.0.0",
-    "homePage": "",
+    "homePage": "https://github.com/huaixvliang/ntr-memory",
     "generate_interceptor": "ntrMemoryInterceptor"
 }
