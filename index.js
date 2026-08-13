@@ -213,23 +213,37 @@ function buildExtractPrompt(historyText, snapshotText) {
 }
 
 async function callMainApi(prompt, systemPrompt, responseLength) {
-    try {
-        const sys = systemPrompt || '你是剧情记忆归档器，只输出要求的文本，不要任何额外解释。';
-        let result;
-        if (typeof generateRaw === 'function') {
-            result = await generateRaw({ prompt, systemPrompt: sys, responseLength });
-        } else if (typeof generateQuietPrompt === 'function') {
-            // 老版本回退：generateQuietPrompt 带聊天上下文，但可用
-            result = await generateQuietPrompt({ quietPrompt: prompt, skipWIAN: true, responseLength });
-        } else {
-            console.warn('[ntr-memory] 当前酒馆版本不支持 generateRaw / generateQuietPrompt，总结功能停用');
-            return '';
+    const sys = systemPrompt || '你是剧情记忆归档器，只输出要求的文本，不要任何额外解释。';
+    // 优先 generateRaw（不带聊天上下文，干净）；失败或返回空则回退 generateQuietPrompt（带上下文，更稳）
+    if (typeof generateRaw === 'function') {
+        try {
+            const r = await generateRaw({ prompt, systemPrompt: sys, responseLength });
+            const txt = (typeof r === 'string' ? r : '').trim();
+            if (txt) {
+                console.debug('[ntr-memory] generateRaw 总结成功，长度', txt.length);
+                return txt;
+            }
+            console.warn('[ntr-memory] generateRaw 返回空，回退 generateQuietPrompt');
+        } catch (e) {
+            console.warn('[ntr-memory] generateRaw 失败，回退 generateQuietPrompt：', e);
         }
-        return (typeof result === 'string' ? result : '').trim();
-    } catch (e) {
-        console.error('[ntr-memory] 主 API 调用失败：', e);
-        return '';
     }
+    if (typeof generateQuietPrompt === 'function') {
+        try {
+            const r = await generateQuietPrompt({ quietPrompt: prompt, skipWIAN: true, responseLength });
+            const txt = (typeof r === 'string' ? r : '').trim();
+            if (txt) {
+                console.debug('[ntr-memory] generateQuietPrompt 总结成功，长度', txt.length);
+                return txt;
+            }
+            console.warn('[ntr-memory] generateQuietPrompt 也返回空');
+        } catch (e) {
+            console.error('[ntr-memory] generateQuietPrompt 失败：', e);
+        }
+    } else {
+        console.warn('[ntr-memory] 当前酒馆版本不支持 generateRaw / generateQuietPrompt，总结功能停用');
+    }
+    return '';
 }
 
 // ---------- 总结流程 ----------
