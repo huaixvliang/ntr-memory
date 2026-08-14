@@ -169,15 +169,23 @@
 }
 #ntrmem-fab:hover { background: #3a3a4e; }
 
-/* 悬浮窗（定位由 JS 内联计算，这里只保留视觉样式） */
+/* 悬浮面板（全屏遮罩 + 居中卡片；定位同时由 JS 内联兜底） */
 #ntrmem-win {
     position: fixed;
-    top: 60px;
-    width: 440px;
-    max-width: 94vw;
-    height: auto;
-    max-height: 86vh;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.65);
     z-index: 2147483000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+#ntrmem-win-card {
+    width: min(440px, 94vw);
+    max-height: 88vh;
     background: #191920;
     border: 1px solid #3a3a4a;
     border-radius: 10px;
