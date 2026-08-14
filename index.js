@@ -97,6 +97,22 @@ function persist() {
     try { saveSettingsDebounced(); } catch (e) { /* 忽略 */ }
 }
 
+// 面板实时刷新（节流 + 焦点检测，避免打断用户正在编辑）
+let panelRefreshTimer = null;
+function refreshPanel() {
+    if (typeof document === 'undefined') return;
+    const panel = document.getElementById('ntr-memory-settings');
+    if (!panel) return; // 面板未挂载
+    // 焦点在面板内（用户正在编辑）时跳过，避免打断输入
+    const active = document.activeElement;
+    if (active && panel.contains(active)) return;
+    if (panelRefreshTimer) return;
+    panelRefreshTimer = setTimeout(() => {
+        panelRefreshTimer = null;
+        try { renderSettings(); } catch (e) { /* 忽略 */ }
+    }, 600);
+}
+
 // ---------- 工具 ----------
 
 /** 从模型输出中稳健地提取 JSON 对象（字符串感知 + BOM 清理 + 多层兜底） */
@@ -185,7 +201,7 @@ function applyStatusBar(text) {
         mem.snapshot[name] = next;
         changed = true;
     }
-    if (changed) persist();
+    if (changed) { persist(); refreshPanel(); }
     return vals;
 }
 
@@ -447,6 +463,7 @@ async function summarizeBatch(batch) {
     }
 
     persist();
+    refreshPanel(); // 总结完成后实时刷新面板
 }
 
 /** 把主线推进片段追加进主线大记忆（超长再压缩成连贯主线） */
