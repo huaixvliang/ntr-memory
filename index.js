@@ -738,7 +738,6 @@ function registerCommands() {
 function buildSettingsHtml() {
     return `
     <div id="ntr-memory-settings" class="ntrmem-panel">
-        <h3>鸠占鹊巢·记忆核心</h3>
         <div class="ntrmem-row"><label><input type="checkbox" id="ntrmem-enabled"> 启用记忆注入</label></div>
 
         <div class="ntrmem-manual-box">
@@ -765,7 +764,7 @@ function buildSettingsHtml() {
         <div class="ntrmem-label">剧情记忆（按人分，点名字展开，可删单条事件）：</div>
         <div id="ntrmem-characters"></div>
         <hr>
-        <div class="ntrmem-label">全局大事件轴（可删单条）：</div>
+        <div class="ntrmem-label">全局大事件轴（点标题展开）：</div>
         <div id="ntrmem-globalevents"></div>
         <div class="ntrmem-label">主线大记忆（宏观主线，可编辑）：</div>
         <textarea id="ntrmem-mainline" rows="4" style="width:100%"></textarea>
@@ -887,15 +886,31 @@ function renderCharacters(mem) {
 function renderGlobalEvents(mem) {
     const container = document.getElementById('ntrmem-globalevents');
     if (!container) return;
-    if (!mem.globalEvents.length) {
-        container.innerHTML = '<div style="color:#888">（暂无）</div>';
-        return;
+    const count = mem.globalEvents.length;
+    let html = `<div class="ntrmem-char-block">`;
+    html += `<div class="ntrmem-char-title" id="ntrmem-globalevents-title" style="cursor:pointer"><span class="ntrmem-arrow" id="ntrmem-globalevents-arrow">▸</span> 全局大事件轴（${count} 条）</div>`;
+    html += `<div id="ntrmem-globalevents-body" style="display:none;margin-top:4px">`;
+    if (!count) {
+        html += `<div class="ntrmem-item">（暂无）</div>`;
+    } else {
+        mem.globalEvents.forEach((e, i) => {
+            html += `<div class="ntrmem-item">${escapeHtml(eventToLine(e))} <button class="ntrmem-gev-del" data-index="${i}">删</button></div>`;
+        });
     }
-    let html = '';
-    mem.globalEvents.forEach((e, i) => {
-        html += `<div style="font-size:12px;color:#bbb">${escapeHtml(eventToLine(e))} <button class="ntrmem-gev-del" data-index="${i}">删</button></div>`;
-    });
+    html += `</div></div>`;
     container.innerHTML = html;
+
+    // 点击标题折叠/展开
+    document.getElementById('ntrmem-globalevents-title').addEventListener('click', () => {
+        const body = document.getElementById('ntrmem-globalevents-body');
+        const arrow = document.getElementById('ntrmem-globalevents-arrow');
+        if (!body || !arrow) return;
+        const hidden = body.style.display === 'none';
+        body.style.display = hidden ? 'block' : 'none';
+        arrow.textContent = hidden ? '▾' : '▸';
+    });
+
+    // 删事件
     container.querySelectorAll('.ntrmem-gev-del').forEach(btn => {
         btn.addEventListener('click', () => {
             const m = getMem();
@@ -1072,11 +1087,70 @@ function showImportDialog() {
     };
 }
 
+function enableDrag(handle, target) {
+    let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
+    const start = (x, y) => {
+        dragging = true;
+        sx = x; sy = y;
+        const rect = target.getBoundingClientRect();
+        ox = rect.left; oy = rect.top;
+        target.style.left = ox + 'px';
+        target.style.top = oy + 'px';
+    };
+    const move = (x, y) => {
+        if (!dragging) return;
+        target.style.left = (ox + x - sx) + 'px';
+        target.style.top = (oy + y - sy) + 'px';
+    };
+    const end = () => { dragging = false; };
+    handle.addEventListener('mousedown', e => { e.preventDefault(); start(e.clientX, e.clientY); });
+    document.addEventListener('mousemove', e => move(e.clientX, e.clientY));
+    document.addEventListener('mouseup', end);
+    handle.addEventListener('touchstart', e => { start(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+    document.addEventListener('touchmove', e => { move(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+    document.addEventListener('touchend', end);
+}
+
 function mountSettings() {
-    const container = document.getElementById('extensions_settings');
-    if (!container) return;
-    if (document.getElementById('ntr-memory-settings')) return;
-    container.insertAdjacentHTML('beforeend', buildSettingsHtml());
+    if (document.getElementById('ntr-memory-settings')) return; // 已挂载
+
+    // 1) 浮动按钮（FAB）
+    const fab = document.createElement('div');
+    fab.id = 'ntrmem-fab';
+    fab.innerHTML = '🧠';
+    fab.title = '记忆核心';
+    document.body.appendChild(fab);
+
+    // 2) 悬浮窗
+    const win = document.createElement('div');
+    win.id = 'ntrmem-win';
+    win.style.display = 'none';
+    win.innerHTML = `
+        <div id="ntrmem-win-titlebar">
+            <span class="ntrmem-win-title">鸠占鹊巢·记忆核心</span>
+            <button id="ntrmem-win-close" class="ntrmem-win-close">×</button>
+        </div>
+        <div id="ntrmem-win-body">
+            ${buildSettingsHtml()}
+        </div>
+    `;
+    document.body.appendChild(win);
+
+    // 3) FAB 点击切换
+    fab.addEventListener('click', () => {
+        const show = win.style.display === 'none';
+        win.style.display = show ? 'flex' : 'none';
+    });
+
+    // 4) 关闭按钮
+    document.getElementById('ntrmem-win-close').addEventListener('click', () => {
+        win.style.display = 'none';
+    });
+
+    // 5) 标题栏拖动
+    enableDrag(document.getElementById('ntrmem-win-titlebar'), win);
+
+    // 6) 绑定面板事件 + 渲染
     bindSettingsEvents();
     renderSettings();
 }
