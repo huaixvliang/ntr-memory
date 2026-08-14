@@ -723,6 +723,21 @@ function registerCommands() {
     );
 
     registerSlashCommand(
+        'mem-panel',
+        () => {
+            const win = document.getElementById('ntrmem-win');
+            if (win) {
+                const show = win.style.display === 'none';
+                win.style.display = show ? 'flex' : 'none';
+                return show ? '[记忆核心] 面板已打开。' : '[记忆核心] 面板已关闭。';
+            }
+            return '[记忆核心] 面板尚未挂载（可能是旧版，请重装最新代码）。';
+        },
+        [],
+        '打开/关闭记忆面板悬浮窗（右下角 🧠 按钮看不到时的兜底）',
+    );
+
+    registerSlashCommand(
         'mem-export',
         () => {
             const json = exportMemory();
@@ -1114,23 +1129,24 @@ function enableDrag(handle, target) {
 function mountSettings() {
     if (document.getElementById('ntr-memory-settings')) return; // 已挂载
 
-    // 1) 浮动按钮（FAB）
+    // 1) 浮动按钮（FAB）——关键定位用内联 style，不依赖 style.css 是否加载
     const fab = document.createElement('div');
     fab.id = 'ntrmem-fab';
     fab.innerHTML = '🧠';
     fab.title = '记忆核心';
+    fab.style.cssText = 'position:fixed;right:18px;bottom:18px;width:52px;height:52px;border-radius:50%;background:#2a2a3a;border:1px solid #4a4a5e;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;z-index:2147483000;box-shadow:0 2px 10px rgba(0,0,0,0.5);user-select:none;line-height:1';
     document.body.appendChild(fab);
 
-    // 2) 悬浮窗
+    // 2) 悬浮窗——关键定位用内联 style
     const win = document.createElement('div');
     win.id = 'ntrmem-win';
-    win.style.display = 'none';
+    win.style.cssText = 'position:fixed;top:70px;left:calc(100vw - 460px);width:440px;max-width:94vw;max-height:86vh;z-index:2147483000;background:#191920;border:1px solid #3a3a4a;border-radius:10px;box-shadow:0 6px 30px rgba(0,0,0,0.6);display:none;flex-direction:column;overflow:hidden';
     win.innerHTML = `
-        <div id="ntrmem-win-titlebar">
-            <span class="ntrmem-win-title">鸠占鹊巢·记忆核心</span>
-            <button id="ntrmem-win-close" class="ntrmem-win-close">×</button>
+        <div id="ntrmem-win-titlebar" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#22222c;border-bottom:1px solid #33333f;cursor:move;user-select:none;flex-shrink:0">
+            <span style="font-weight:600;color:#e0e0ea">鸠占鹊巢·记忆核心</span>
+            <button id="ntrmem-win-close" style="background:transparent;border:none;color:#aaa;font-size:20px;cursor:pointer;padding:0 4px;line-height:1">×</button>
         </div>
-        <div id="ntrmem-win-body">
+        <div id="ntrmem-win-body" style="overflow-y:auto;padding:12px 14px;flex:1">
             ${buildSettingsHtml()}
         </div>
     `;
@@ -1153,6 +1169,8 @@ function mountSettings() {
     // 6) 绑定面板事件 + 渲染
     bindSettingsEvents();
     renderSettings();
+
+    console.log('[ntr-memory] 悬浮窗已挂载（🧠 按钮在右下角）。');
 }
 
 // ---------- 启动 ----------
