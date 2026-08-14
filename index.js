@@ -723,21 +723,6 @@ function registerCommands() {
     );
 
     registerSlashCommand(
-        'mem-panel',
-        () => {
-            const win = document.getElementById('ntrmem-win');
-            if (win) {
-                const show = win.style.display === 'none';
-                win.style.display = show ? 'flex' : 'none';
-                return show ? '[记忆核心] 面板已打开。' : '[记忆核心] 面板已关闭。';
-            }
-            return '[记忆核心] 面板尚未挂载（可能是旧版，请重装最新代码）。';
-        },
-        [],
-        '打开/关闭记忆面板悬浮窗（右下角 🧠 按钮看不到时的兜底）',
-    );
-
-    registerSlashCommand(
         'mem-export',
         () => {
             const json = exportMemory();
@@ -753,6 +738,7 @@ function registerCommands() {
 function buildSettingsHtml() {
     return `
     <div id="ntr-memory-settings" class="ntrmem-panel">
+        <h3>鸠占鹊巢·记忆核心</h3>
         <div class="ntrmem-row"><label><input type="checkbox" id="ntrmem-enabled"> 启用记忆注入</label></div>
 
         <div class="ntrmem-manual-box">
@@ -1102,79 +1088,14 @@ function showImportDialog() {
     };
 }
 
-function enableDrag(handle, target) {
-    let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
-    const start = (x, y) => {
-        dragging = true;
-        sx = x; sy = y;
-        const rect = target.getBoundingClientRect();
-        ox = rect.left; oy = rect.top;
-        target.style.left = ox + 'px';
-        target.style.top = oy + 'px';
-    };
-    const move = (x, y) => {
-        if (!dragging) return;
-        target.style.left = (ox + x - sx) + 'px';
-        target.style.top = (oy + y - sy) + 'px';
-    };
-    const end = () => { dragging = false; };
-    handle.addEventListener('mousedown', e => { e.preventDefault(); start(e.clientX, e.clientY); });
-    document.addEventListener('mousemove', e => move(e.clientX, e.clientY));
-    document.addEventListener('mouseup', end);
-    handle.addEventListener('touchstart', e => { start(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
-    document.addEventListener('touchmove', e => { move(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
-    document.addEventListener('touchend', end);
-}
-
 function mountSettings() {
-    if (document.getElementById('ntr-memory-settings')) return; // 已挂载
-
-    // 1) 浮动按钮（FAB）——关键定位用内联 style，不依赖 style.css 是否加载
-    const fab = document.createElement('div');
-    fab.id = 'ntrmem-fab';
-    fab.innerHTML = '🧠';
-    fab.title = '记忆核心';
-    fab.style.cssText = 'position:fixed;right:18px;bottom:18px;width:52px;height:52px;border-radius:50%;background:#2a2a3a;border:1px solid #4a4a5e;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;z-index:2147483000;box-shadow:0 2px 10px rgba(0,0,0,0.5);user-select:none;line-height:1';
-    document.body.appendChild(fab);
-
-    // 2) 悬浮面板——全屏遮罩 + 居中卡片（最可靠，任何屏幕/环境都可见）
-    const win = document.createElement('div');
-    win.id = 'ntrmem-win';
-    win.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:2147483000;display:none;align-items:center;justify-content:center;overflow:hidden';
-    win.innerHTML = `
-        <div id="ntrmem-win-card" style="width:min(440px,94vw);max-height:88vh;background:#191920;border:1px solid #3a3a4a;border-radius:10px;box-shadow:0 6px 30px rgba(0,0,0,0.6);display:flex;flex-direction:column;overflow:hidden">
-            <div id="ntrmem-win-titlebar" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#22222c;border-bottom:1px solid #33333f;user-select:none;flex-shrink:0">
-                <span style="font-weight:600;color:#e0e0ea">鸠占鹊巢·记忆核心</span>
-                <button id="ntrmem-win-close" style="background:transparent;border:none;color:#aaa;font-size:22px;cursor:pointer;padding:0 6px;line-height:1">×</button>
-            </div>
-            <div id="ntrmem-win-body" style="overflow-y:auto;padding:12px 14px;flex:1">
-                ${buildSettingsHtml()}
-            </div>
-        </div>
-    `;
-    document.body.appendChild(win);
-
-    // 3) FAB 点击切换
-    fab.addEventListener('click', () => {
-        const show = win.style.display === 'none';
-        win.style.display = show ? 'flex' : 'none';
-    });
-
-    // 4) 关闭按钮
-    document.getElementById('ntrmem-win-close').addEventListener('click', () => {
-        win.style.display = 'none';
-    });
-
-    // 5) 点遮罩空白处关闭
-    win.addEventListener('click', e => {
-        if (e.target === win) win.style.display = 'none';
-    });
-
-    // 6) 绑定面板事件 + 渲染
+    const container = document.getElementById('extensions_settings');
+    if (!container) return;
+    if (document.getElementById('ntr-memory-settings')) return;
+    container.insertAdjacentHTML('beforeend', buildSettingsHtml());
     bindSettingsEvents();
     renderSettings();
-
-    console.log('[ntr-memory] 悬浮窗已挂载（🧠 按钮在右下角）。');
+    console.log('[ntr-memory] 设置面板已挂载到扩展设置区。');
 }
 
 // ---------- 启动 ----------
