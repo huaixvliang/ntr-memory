@@ -169,16 +169,15 @@
 }
 #ntrmem-fab:hover { background: #3a3a4e; }
 
-/* 悬浮窗 */
+/* 悬浮窗（定位由 JS 内联计算，这里只保留视觉样式） */
 #ntrmem-win {
     position: fixed;
-    top: 70px;
-    left: calc(100vw - 460px);
+    top: 60px;
     width: 440px;
-    max-width: 92vw;
+    max-width: 94vw;
     height: auto;
     max-height: 86vh;
-    z-index: 99990;
+    z-index: 2147483000;
     background: #191920;
     border: 1px solid #3a3a4a;
     border-radius: 10px;
