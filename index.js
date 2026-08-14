@@ -291,10 +291,38 @@ function pushMessage(messageId) {
     return !msg.is_user;
 }
 
+/** 主动扫描 chat，把还没记录的消息补进队列（拦截器兜底，不依赖事件触发） */
+function collectPendingFromChat() {
+    const mem = getMem();
+    if (!mem.enabled) return;
+    const context = getContext();
+    const chat = context.chat || [];
+    let collected = 0;
+    for (let i = 0; i < chat.length; i++) {
+        const msg = chat[i];
+        if (!msg || !msg.mes) continue;
+        if (processedIds.has(i)) continue;
+        if (msg.extra?.type === 'narrator' || msg.extra?.type === 'memory') continue;
+        processedIds.add(i);
+        const role = msg.is_user ? '玩家' : '角色';
+        mem.pending.push({ role, text: String(msg.mes) });
+        collected++;
+        if (!msg.is_user) {
+            try { applyStatusBar(String(msg.mes)); } catch (e) { /* 忽略 */ }
+        }
+    }
+    if (collected > 0) {
+        console.log(`[ntr-memory] 拦截器补收 ${collected} 条，pending=${mem.pending.length}/${mem.queueSize}`);
+        checkSummarize();
+    }
+}
+
 function checkSummarize() {
     const mem = getMem();
-    if (mem.pending.length >= mem.queueSize) {
-        console.log(`[ntr-memory] 待总结消息已达 ${mem.pending.length} 条（阈值 ${mem.queueSize}），触发自动总结`);
+    const userCount = mem.pending.filter(m => m.role === '玩家').length;
+    const aiCount = mem.pending.filter(m => m.role === '角色').length;
+    if (userCount >= mem.queueSize && aiCount >= mem.queueSize) {
+        console.log(`[ntr-memory] 已攒满 ${mem.queueSize} 轮（玩家 ${userCount} 条 / 角色 ${aiCount} 条），触发自动总结`);
         setTimeout(() => scheduleSummarize(), 800);
     }
 }
@@ -302,29 +330,45 @@ function checkSummarize() {
 async function scheduleSummarize() {
     const mem = getMem();
     if (summarizing) return;
-    if (mem.pending.length < mem.queueSize) return;
+    const userTotal = mem.pending.filter(m => m.role === '玩家').length;
+    const aiTotal = mem.pending.filter(m => m.role === '角色').length;
+    if (userTotal < mem.queueSize || aiTotal < mem.queueSize) return;
+
     summarizing = true;
     try {
-        const batch = mem.pending.splice(0, mem.queueSize);
+        // 按时间顺序取出 queueSize 条玩家 + queueSize 条角色（= queueSize 轮完整对话）
+        const batch = [];
+        let u = 0, a = 0;
+        const rest = [];
+        for (const m of mem.pending) {
+            if (m.role === '玩家' && u < mem.queueSize) { batch.push(m); u++; }
+            else if (m.role === '角色' && a < mem.queueSize) { batch.push(m); a++; }
+            else rest.push(m);
+        }
+        mem.pending = rest;
         await summarizeBatch(batch);
     } finally {
         summarizing = false;
-        if (mem.pending.length >= mem.queueSize) {
-            setTimeout(() => scheduleSummarize(), 500);
-        }
+        checkSummarize();
     }
 }
 
-/** 手动总结最近 n 条消息（测试用 / 手动触发），返回实际总结的条数 */
+/** 手动总结最近 n 轮（n 条玩家 + n 条角色），返回实际总结的条数 */
 async function manualSummarize(n) {
     const context = getContext();
     const chat = context.chat || [];
     const msgs = [];
-    for (let i = chat.length - 1; i >= 0 && msgs.length < n; i--) {
+    let userCount = 0, aiCount = 0;
+    for (let i = chat.length - 1; i >= 0; i--) {
         const msg = chat[i];
         if (!msg || !msg.mes) continue;
         if (msg.extra?.type === 'narrator' || msg.extra?.type === 'memory') continue;
-        msgs.unshift({ role: msg.is_user ? '玩家' : '角色', text: String(msg.mes) });
+        const isUser = msg.is_user;
+        if (isUser && userCount >= n) continue;
+        if (!isUser && aiCount >= n) continue;
+        msgs.unshift({ role: isUser ? '玩家' : '角色', text: String(msg.mes) });
+        if (isUser) userCount++; else aiCount++;
+        if (userCount >= n && aiCount >= n) break;
     }
     if (!msgs.length) return 0;
     await summarizeBatch(msgs);
@@ -598,6 +642,9 @@ async function ntrMemoryInterceptor(chat, contextSize, abort, type) {
     if (!mem.enabled) return;
     if (type === 'quiet' || type === 'summarize') return;
 
+    // 主动收集未入队的消息（拦截器兜底：每次主对话生成前一定执行，不依赖事件）
+    collectPendingFromChat();
+
     // 自动拉取已启用世界书的常驻条目（作为世界观注入）
     let autoWV = '';
     if (mem.autoWorldInfo && typeof loadWorldInfo === 'function') {
@@ -628,10 +675,12 @@ function registerCommands() {
         'mem',
         () => {
             const mem = getMem();
+            const userCount = mem.pending.filter(m => m.role === '玩家').length;
+            const aiCount = mem.pending.filter(m => m.role === '角色').length;
             const lines = [
                 '【记忆核心状态】',
                 `状态：${mem.enabled ? '运行中' : '已暂停'}`,
-                `待总结消息：${mem.pending.length}/${mem.queueSize}`,
+                `待总结：玩家 ${userCount} 条 / 角色 ${aiCount} 条（攒满各 ${mem.queueSize} 条触发）`,
                 `数值快照人物：${Object.keys(mem.snapshot).length} 人`,
                 `剧情记忆人物：${Object.keys(mem.characters).length} 人`,
                 `全局大事件：${mem.globalEvents.length}/${mem.globalMax} 条`,
