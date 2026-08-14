@@ -1137,20 +1137,19 @@ function mountSettings() {
     fab.style.cssText = 'position:fixed;right:18px;bottom:18px;width:52px;height:52px;border-radius:50%;background:#2a2a3a;border:1px solid #4a4a5e;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;z-index:2147483000;box-shadow:0 2px 10px rgba(0,0,0,0.5);user-select:none;line-height:1';
     document.body.appendChild(fab);
 
-    // 2) 悬浮窗——用 JS 计算居中位置（避免 CSS calc 在窄屏手机变成负数、窗口跑到屏幕外）
-    const vw = window.innerWidth || 375;
-    const winWidth = Math.min(440, vw - 16);
-    const winLeft = Math.max(8, (vw - winWidth) / 2);
+    // 2) 悬浮面板——全屏遮罩 + 居中卡片（最可靠，任何屏幕/环境都可见）
     const win = document.createElement('div');
     win.id = 'ntrmem-win';
-    win.style.cssText = `position:fixed;top:60px;left:${winLeft}px;width:${winWidth}px;max-width:94vw;max-height:86vh;z-index:2147483000;background:#191920;border:1px solid #3a3a4a;border-radius:10px;box-shadow:0 6px 30px rgba(0,0,0,0.6);display:none;flex-direction:column;overflow:hidden`;
+    win.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:2147483000;display:none;align-items:center;justify-content:center;overflow:hidden';
     win.innerHTML = `
-        <div id="ntrmem-win-titlebar" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#22222c;border-bottom:1px solid #33333f;cursor:move;user-select:none;flex-shrink:0">
-            <span style="font-weight:600;color:#e0e0ea">鸠占鹊巢·记忆核心</span>
-            <button id="ntrmem-win-close" style="background:transparent;border:none;color:#aaa;font-size:20px;cursor:pointer;padding:0 4px;line-height:1">×</button>
-        </div>
-        <div id="ntrmem-win-body" style="overflow-y:auto;padding:12px 14px;flex:1">
-            ${buildSettingsHtml()}
+        <div id="ntrmem-win-card" style="width:min(440px,94vw);max-height:88vh;background:#191920;border:1px solid #3a3a4a;border-radius:10px;box-shadow:0 6px 30px rgba(0,0,0,0.6);display:flex;flex-direction:column;overflow:hidden">
+            <div id="ntrmem-win-titlebar" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#22222c;border-bottom:1px solid #33333f;user-select:none;flex-shrink:0">
+                <span style="font-weight:600;color:#e0e0ea">鸠占鹊巢·记忆核心</span>
+                <button id="ntrmem-win-close" style="background:transparent;border:none;color:#aaa;font-size:22px;cursor:pointer;padding:0 6px;line-height:1">×</button>
+            </div>
+            <div id="ntrmem-win-body" style="overflow-y:auto;padding:12px 14px;flex:1">
+                ${buildSettingsHtml()}
+            </div>
         </div>
     `;
     document.body.appendChild(win);
@@ -1166,8 +1165,10 @@ function mountSettings() {
         win.style.display = 'none';
     });
 
-    // 5) 标题栏拖动
-    enableDrag(document.getElementById('ntrmem-win-titlebar'), win);
+    // 5) 点遮罩空白处关闭
+    win.addEventListener('click', e => {
+        if (e.target === win) win.style.display = 'none';
+    });
 
     // 6) 绑定面板事件 + 渲染
     bindSettingsEvents();
