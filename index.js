@@ -281,7 +281,7 @@ function pushMessage(messageId) {
 
     const role = msg.is_user ? '玩家' : '角色';
     mem.pending.push({ role, text: String(msg.mes) });
-    console.debug(`[ntr-memory] 入队：${role}，pending=${mem.pending.length}/${mem.queueSize}`);
+    console.log(`[ntr-memory] 入队：${role}，pending=${mem.pending.length}/${mem.queueSize}`);
 
     // AI 消息：从正文状态栏正则抓精确数值（每轮即时更新快照，双源校验的精确源）
     if (!msg.is_user) {
@@ -294,7 +294,7 @@ function pushMessage(messageId) {
 function checkSummarize() {
     const mem = getMem();
     if (mem.pending.length >= mem.queueSize) {
-        console.debug(`[ntr-memory] 待总结消息已达 ${mem.pending.length} 条（阈值 ${mem.queueSize}），触发自动总结`);
+        console.log(`[ntr-memory] 待总结消息已达 ${mem.pending.length} 条（阈值 ${mem.queueSize}），触发自动总结`);
         setTimeout(() => scheduleSummarize(), 800);
     }
 }
@@ -1093,8 +1093,11 @@ function init() {
         eventSource.on(event_types.MESSAGE_SENT, (messageId) => {
             pushMessage(messageId); // 玩家消息进队列
         });
-        // AI 消息：流式生成时 MESSAGE_RECEIVED 不触发（带 !fromStreaming 条件），
-        // 改用 GENERATION_ENDED——生成完成后必然触发，覆盖流式与非流式。
+        // 双保险：MESSAGE_RECEIVED（非流式）+ GENERATION_ENDED（流式/非流式都覆盖），processedIds 去重保证不重复
+        eventSource.on(event_types.MESSAGE_RECEIVED, (messageId) => {
+            const isAI = pushMessage(messageId);
+            if (isAI) checkSummarize();
+        });
         eventSource.on(event_types.GENERATION_ENDED, (chatLength) => {
             const len = (typeof chatLength === 'number' && chatLength > 0) ? chatLength : (getContext().chat?.length || 0);
             const idx = len - 1;
