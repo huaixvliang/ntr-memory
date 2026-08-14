@@ -281,6 +281,7 @@ function pushMessage(messageId) {
 
     const role = msg.is_user ? '玩家' : '角色';
     mem.pending.push({ role, text: String(msg.mes) });
+    console.debug(`[ntr-memory] 入队：${role}，pending=${mem.pending.length}/${mem.queueSize}`);
 
     // AI 消息：从正文状态栏正则抓精确数值（每轮即时更新快照，双源校验的精确源）
     if (!msg.is_user) {
@@ -293,6 +294,7 @@ function pushMessage(messageId) {
 function checkSummarize() {
     const mem = getMem();
     if (mem.pending.length >= mem.queueSize) {
+        console.debug(`[ntr-memory] 待总结消息已达 ${mem.pending.length} 条（阈值 ${mem.queueSize}），触发自动总结`);
         setTimeout(() => scheduleSummarize(), 800);
     }
 }
@@ -1089,16 +1091,22 @@ function init() {
     getMem();
     if (typeof eventSource?.on === 'function' && event_types) {
         eventSource.on(event_types.MESSAGE_SENT, (messageId) => {
-            pushMessage(messageId);
+            pushMessage(messageId); // 玩家消息进队列
         });
-        eventSource.on(event_types.MESSAGE_RECEIVED, (messageId) => {
-            const isAI = pushMessage(messageId);
+        // AI 消息：流式生成时 MESSAGE_RECEIVED 不触发（带 !fromStreaming 条件），
+        // 改用 GENERATION_ENDED——生成完成后必然触发，覆盖流式与非流式。
+        eventSource.on(event_types.GENERATION_ENDED, (chatLength) => {
+            const len = (typeof chatLength === 'number' && chatLength > 0) ? chatLength : (getContext().chat?.length || 0);
+            const idx = len - 1;
+            if (idx < 0) return;
+            const isAI = pushMessage(idx);
             if (isAI) checkSummarize();
         });
     }
     try { registerCommands(); } catch (e) { console.warn('[ntr-memory] 命令注册失败：', e); }
     try { mountSettings(); } catch (e) { console.warn('[ntr-memory] 设置面板挂载失败：', e); }
-    console.log('[ntr-memory] 记忆核心已启动（按人分档 + 共有记忆）。');
+    const evOK = typeof eventSource?.on === 'function' && event_types;
+    console.log(`[ntr-memory] 记忆核心已启动。事件监听：${evOK ? '已注册' : '未注册'}（eventSource=${typeof eventSource} event_types=${typeof event_types} MESSAGE_SENT=${event_types?.MESSAGE_SENT} GENERATION_ENDED=${event_types?.GENERATION_ENDED}）`);
 }
 
 if (document.readyState === 'complete') {
