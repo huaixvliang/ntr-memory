@@ -209,6 +209,22 @@ function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+/** 手动抓取最后一条 AI 消息的状态栏数值（刷新快照），返回抓到的字段数 */
+function refreshSnapshotFromChat() {
+    const context = getContext();
+    const chat = context.chat || [];
+    for (let i = chat.length - 1; i >= 0; i--) {
+        const msg = chat[i];
+        if (msg && !msg.is_user && msg.mes) {
+            const vals = applyStatusBar(String(msg.mes));
+            try { renderSettings(); } catch (e) { /* 忽略 */ }
+            return Object.keys(vals).length;
+        }
+    }
+    try { renderSettings(); } catch (e) { /* 忽略 */ }
+    return 0;
+}
+
 // ---------- 结构化提取（调主 API） ----------
 
 function buildExtractPrompt(historyText, snapshotText) {
@@ -296,7 +312,7 @@ function pushMessage(messageId) {
     if (processedIds.size > 10000) processedIds.clear();
 
     const role = msg.is_user ? '玩家' : '角色';
-    mem.pending.push({ role, text: String(msg.mes) });
+    mem.pending.push({ role, text: String(msg.mes), chatIndex: messageId });
     console.log(`[ntr-memory] 入队：${role}，pending=${mem.pending.length}/${mem.queueSize}`);
 
     // AI 消息：从正文状态栏正则抓精确数值（每轮即时更新快照，双源校验的精确源）
@@ -313,6 +329,14 @@ function collectPendingFromChat() {
     if (!mem.enabled) return;
     const context = getContext();
     const chat = context.chat || [];
+
+    // 已入队但内容变了（swipe 刷消息）→ 以最新内容为准，覆盖旧版本
+    for (const p of mem.pending) {
+        if (p.chatIndex != null && chat[p.chatIndex] && String(chat[p.chatIndex].mes) !== p.text) {
+            p.text = String(chat[p.chatIndex].mes);
+        }
+    }
+
     let collected = 0;
     for (let i = 0; i < chat.length; i++) {
         const msg = chat[i];
@@ -321,12 +345,19 @@ function collectPendingFromChat() {
         if (msg.extra?.type === 'narrator' || msg.extra?.type === 'memory') continue;
         processedIds.add(i);
         const role = msg.is_user ? '玩家' : '角色';
-        mem.pending.push({ role, text: String(msg.mes) });
+        mem.pending.push({ role, text: String(msg.mes), chatIndex: i });
         collected++;
         if (!msg.is_user) {
             try { applyStatusBar(String(msg.mes)); } catch (e) { /* 忽略 */ }
         }
     }
+
+    // swipe 后，最后一条 AI 消息变了 → 重新抓最新数值（覆盖中间版本的脏数据）
+    const lastMsg = chat[chat.length - 1];
+    if (lastMsg && !lastMsg.is_user && lastMsg.mes) {
+        try { applyStatusBar(String(lastMsg.mes)); } catch (e) { /* 忽略 */ }
+    }
+
     if (collected > 0) {
         console.log(`[ntr-memory] 拦截器补收 ${collected} 条，pending=${mem.pending.length}/${mem.queueSize}`);
         checkSummarize();
@@ -604,10 +635,10 @@ function buildInjection(mem, autoWorldView = '') {
         parts.push(`【主线大记忆】\n${mem.mainlineSummary}`);
     }
 
-    // 数值快照（全量，按人，体积固定）
+    // 数值快照（全量，按人，体积固定）——注入时强调"以此为基准"，让 AI 输出状态栏数值更严谨
     const snapText = snapshotToText(mem.snapshot);
     if (snapText) {
-        parts.push(`【数值快照】\n${snapText}`);
+        parts.push(`【数值快照】\n${snapText}\n（以上是当前确定的数值，你正文末尾状态栏的数值必须严格以此为基准、加上本轮变动得出，禁止凭空改动或跳回旧值。）`);
     }
 
     // 当前活跃角色的剧情记忆（和谁互动只注入谁）
@@ -826,7 +857,10 @@ function buildSettingsHtml() {
         <hr>
         <div class="ntrmem-label">数值快照（可直接改，改完自动生效）：</div>
         <div id="ntrmem-snapshot"></div>
-        <div class="ntrmem-row" style="margin-top:4px"><button id="ntrmem-addperson">＋ 新增人物</button></div>
+        <div class="ntrmem-row" style="margin-top:4px">
+            <button id="ntrmem-refresh-snap">🔄 抓取最新数值</button>
+            <button id="ntrmem-addperson">＋ 新增人物</button>
+        </div>
         <hr>
         <div class="ntrmem-label">剧情记忆（按人分，点名字展开，可删单条事件）：</div>
         <div id="ntrmem-characters"></div>
@@ -1057,6 +1091,10 @@ function bindSettingsEvents() {
         if (!mem.characters[n]) mem.characters[n] = { events: [], summary: '' };
         persist();
         renderSettings();
+    });
+    document.getElementById('ntrmem-refresh-snap').addEventListener('click', () => {
+        const n = refreshSnapshotFromChat();
+        toastr?.success?.(`已抓取最后一条消息的数值（${n} 个字段）`);
     });
     document.getElementById('ntrmem-clear').addEventListener('click', () => {
         if (!confirm('确定清空全部记忆？')) return;
