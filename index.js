@@ -1137,10 +1137,13 @@ function mountSettings() {
     fab.style.cssText = 'position:fixed;right:18px;bottom:18px;width:52px;height:52px;border-radius:50%;background:#2a2a3a;border:1px solid #4a4a5e;display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;z-index:2147483000;box-shadow:0 2px 10px rgba(0,0,0,0.5);user-select:none;line-height:1';
     document.body.appendChild(fab);
 
-    // 2) 悬浮窗——关键定位用内联 style
+    // 2) 悬浮窗——用 JS 计算居中位置（避免 CSS calc 在窄屏手机变成负数、窗口跑到屏幕外）
+    const vw = window.innerWidth || 375;
+    const winWidth = Math.min(440, vw - 16);
+    const winLeft = Math.max(8, (vw - winWidth) / 2);
     const win = document.createElement('div');
     win.id = 'ntrmem-win';
-    win.style.cssText = 'position:fixed;top:70px;left:calc(100vw - 460px);width:440px;max-width:94vw;max-height:86vh;z-index:2147483000;background:#191920;border:1px solid #3a3a4a;border-radius:10px;box-shadow:0 6px 30px rgba(0,0,0,0.6);display:none;flex-direction:column;overflow:hidden';
+    win.style.cssText = `position:fixed;top:60px;left:${winLeft}px;width:${winWidth}px;max-width:94vw;max-height:86vh;z-index:2147483000;background:#191920;border:1px solid #3a3a4a;border-radius:10px;box-shadow:0 6px 30px rgba(0,0,0,0.6);display:none;flex-direction:column;overflow:hidden`;
     win.innerHTML = `
         <div id="ntrmem-win-titlebar" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#22222c;border-bottom:1px solid #33333f;cursor:move;user-select:none;flex-shrink:0">
             <span style="font-weight:600;color:#e0e0ea">鸠占鹊巢·记忆核心</span>
